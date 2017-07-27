@@ -14,6 +14,8 @@ Atto :: struct {
     
     running: bool = true;
     
+    active_buffer: ^Buffer;
+    
     draw_string_buffer: fmt.StringBuffer;
 }
 
@@ -28,22 +30,24 @@ init_termbox :: proc(atto: ^Atto) {
 foreign_system_library (
 clib "c";
 )
+
 foreign clib {
     c_snprintf :: proc(s: ^u8, n: uint, format: ^u8, #c_vararg args: ...any) -> i32 #link_name "snprintf" #cc_c ---;
 }
 
 draw_string :: proc(x, y: i32, fg, bg: u16, fmts: string, args: ...any) {
-    //str := fmt.aprintf(fmts, ...args); // Calling this in a loop? Seriously??
-    //defer free(str);
+    str := fmt.aprintf(fmts, ...args); // Calling this in a loop? Seriously??
+    defer free(str);
     
+    /*
     buffer: [2048]u8;
     len := c_snprintf(&buffer[0], 2048, &fmts[0], args);
     if len < 0 {
         assert(false);
-    }
+    }*/
     
-    for i in 0..len {
-        tb_change_cell(x, y, cast(u32)buffer[i], fg, bg);
+    for r in str {
+        tb_change_cell(x, y, cast(u32)r, fg, bg);
         x += 1;
     }
 }
@@ -62,13 +66,20 @@ draw_line_numbers :: proc(using buffer: ^Buffer, atto: ^Atto) -> int {
     x := 0;
     y := atto.status_bar_height;
     for i in 0..lines {
-        draw_string(cast(i32)x, cast(i32)y, TB_GREEN, TB_DEFAULT, "%*d%c\x00", cast(i32)width, cast(i32)i+1, cast(u8)'|');
+        draw_string(cast(i32)x, cast(i32)y, TB_GREEN, TB_DEFAULT, "%d%c", i+1, '|');
         y += 1;
     }
     
     // If lines is less than height, fill in the rest of the bar
     
     return total_width;
+}
+
+draw_status_bar :: proc(using buffer: ^Buffer, atto: ^Atto) {
+    for i in 0..atto.width {
+        tb_change_cell(cast(i32)i, 0, ' ', TB_REVERSE, TB_REVERSE);
+    }
+    draw_string(0, 0, TB_REVERSE, TB_REVERSE, "some_file.txt");
 }
 
 draw_buffer :: proc(using buffer: ^Buffer, atto: ^Atto) {
@@ -107,7 +118,21 @@ draw_buffer :: proc(using buffer: ^Buffer, atto: ^Atto) {
         }
     }
     
+    draw_status_bar(buffer, atto);
+    
     tb_present();
+}
+
+open_buffer_from_file :: proc() {
+    
+}
+
+open_empty_buffer :: proc() {
+    
+}
+
+open_new_buffer :: proc() {
+    
 }
 
 main :: proc() {
@@ -116,18 +141,14 @@ main :: proc() {
     
     buffer: Buffer;
     buffer_init(&buffer, 2);
-    /*buffer_insert(&buffer, "Hello, world!\n");
-    buffer_seek_cursor(&buffer, -4);
-    pos := buffer_get_pos(&buffer);
-    buffer_insert(&buffer, "\n[bop]");
-    buffer_move(&buffer, pos);
-    buffer_insert(&buffer, 'Æ');*/
-    //fmt.println("Here:", buffer_stringify(&buffer));
+    buffer_insert(&buffer, "The\nquick\nbrown\nfox\njumps \nover\nthe\nlazy\ndog");
     
-    buffer_move(&buffer, 0);
+    atto.active_buffer = &buffer;
+    atto.active_buffer.next = atto.active_buffer;
+    atto.active_buffer.prev = atto.active_buffer;
     draw_buffer(&buffer, &atto);
     
-    //atto.running = false;
+    tb_select_input_mode(TB_INPUT_ALT);
     for atto.running {
         event: tb_event;
         tb_poll_event(&event);
@@ -138,6 +159,15 @@ main :: proc() {
                     buffer_insert(&buffer, cast(rune)event.ch);
                 } else {
                     match event.key {
+                        case TB_KEY_ESC: {
+                            
+                        }
+                        case TB_KEY_CTRL_A: {
+                            buffer_seek_char_left(atto.active_buffer, ' ');
+                        }
+                        case TB_KEY_CTRL_D: {
+                            buffer_seek_char_right(atto.active_buffer, ' ');
+                        }
                         case TB_KEY_CTRL_Q: {
                             atto.running = false;
                         }
@@ -145,26 +175,26 @@ main :: proc() {
                             atto.show_whitespace = !atto.show_whitespace;
                         }
                         case TB_KEY_ARROW_RIGHT: {
-                            buffer_move_right(&buffer);
+                            buffer_move_right(atto.active_buffer);
                         }
                         case TB_KEY_ARROW_LEFT: {
-                            buffer_move_left(&buffer);
+                            buffer_move_left(atto.active_buffer);
                         }
                         case TB_KEY_ENTER: {
-                            buffer_insert(&buffer, '\n');
+                            buffer_insert(atto.active_buffer, '\n');
                         }
                         case TB_KEY_SPACE: {
-                            buffer_insert(&buffer, ' ');
+                            buffer_insert(atto.active_buffer, ' ');
                         }
                         case TB_KEY_BACKSPACE: fallthrough;
                         case TB_KEY_BACKSPACE2: {
-                            buffer_backspace(&buffer);
+                            buffer_backspace(atto.active_buffer);
                         }
                         case TB_KEY_DELETE: {
-                            buffer_delete(&buffer);
+                            buffer_delete(atto.active_buffer);
                         }
                         case TB_KEY_TAB: {
-                            buffer_insert(&buffer, '\t');
+                            buffer_insert(atto.active_buffer, '\t');
                         }
                     }
                 }

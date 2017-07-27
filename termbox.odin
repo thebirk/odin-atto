@@ -153,7 +153,7 @@ foreign termboxlib {
     
     tb_cell_buffer :: proc() -> ^tb_cell #cc_c ---;
     
-    tb_select_input_method :: proc(mode: i32) -> i32 #cc_c ---;
+    tb_select_input_mode :: proc(mode: i32) -> i32 #cc_c ---;
     
     tb_select_output_mode :: proc(mode: i32) -> i32 #cc_c ---;
     
