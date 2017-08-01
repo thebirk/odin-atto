@@ -79,7 +79,7 @@ draw_status_bar :: proc(using buffer: ^Buffer, atto: ^Atto) {
     for i in 0..atto.width {
         tb_change_cell(cast(i32)i, 0, ' ', TB_REVERSE, TB_REVERSE);
     }
-    draw_string(0, 0, TB_REVERSE, TB_REVERSE, "some_file.txt");
+    draw_string(0, 0, TB_REVERSE, TB_REVERSE, "%s - ", atto.active_buffer.name^);
 }
 
 draw_buffer :: proc(using buffer: ^Buffer, atto: ^Atto) {
@@ -123,8 +123,22 @@ draw_buffer :: proc(using buffer: ^Buffer, atto: ^Atto) {
     tb_present();
 }
 
-open_buffer_from_file :: proc() {
+open_buffer_from_file :: proc(atto: ^Atto, path: string) {
+    buffer := new(Buffer);
+    buffer_init(buffer, 2);
+    data, ok := os.read_entire_file(path);
+    if !ok {
+        assert(false);
+    }
+    buffer_insert(buffer, cast(string)data);
+    buffer_move(buffer, 0);
+    buffer.name = new_clone(path);
     
+    buffer.next = atto.active_buffer.next;
+    buffer.prev = atto.active_buffer;
+    atto.active_buffer.next = buffer;
+    
+    atto.active_buffer = buffer;
 }
 
 open_empty_buffer :: proc() {
@@ -146,7 +160,11 @@ main :: proc() {
     atto.active_buffer = &buffer;
     atto.active_buffer.next = atto.active_buffer;
     atto.active_buffer.prev = atto.active_buffer;
-    draw_buffer(&buffer, &atto);
+    atto.active_buffer.name = new_clone("internal buffer");
+    
+    open_buffer_from_file(&atto, "atto.odin");
+    
+    draw_buffer(atto.active_buffer, &atto);
     
     tb_select_input_mode(TB_INPUT_ALT);
     for atto.running {
@@ -156,11 +174,17 @@ main :: proc() {
         match event.kind {
             case TB_EVENT_KEY: {
                 if event.ch != 0 {
-                    buffer_insert(&buffer, cast(rune)event.ch);
+                    buffer_insert(atto.active_buffer, cast(rune)event.ch);
                 } else {
                     match event.key {
                         case TB_KEY_ESC: {
                             
+                        }
+                        case TB_KEY_HOME: {
+                            buffer_seek_home(atto.active_buffer);
+                        }
+                        case TB_KEY_END: {
+                            buffer_seek_end(atto.active_buffer);
                         }
                         case TB_KEY_CTRL_A: {
                             buffer_seek_char_left(atto.active_buffer, ' ');
@@ -173,6 +197,12 @@ main :: proc() {
                         }
                         case TB_KEY_CTRL_W: {
                             atto.show_whitespace = !atto.show_whitespace;
+                        }
+                        case TB_KEY_ARROW_UP: {
+                            buffer_seek_up(atto.active_buffer);
+                        }
+                        case TB_KEY_ARROW_DOWN: {
+                            buffer_seek_down(atto.active_buffer);
                         }
                         case TB_KEY_ARROW_RIGHT: {
                             buffer_move_right(atto.active_buffer);
@@ -201,7 +231,7 @@ main :: proc() {
             }
         }
         
-        draw_buffer(&buffer, &atto);
+        draw_buffer(atto.active_buffer, &atto);
     }
     
     tb_shutdown();
